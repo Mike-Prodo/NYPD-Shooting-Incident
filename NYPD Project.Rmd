@@ -1,0 +1,154 @@
+---
+title: "NYPD Shooting Incident"
+author: "Mike Prodo"
+date: "10/28/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(chron)
+```
+
+## The Data
+
+The data being used for this project is a list of every shooting incident that occurred in New York City from the years 2006 through 2020. This data and information about it can be found through the link https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic.
+
+Libraries used in this project are "chron."
+
+Reading in the data:
+```{r reading_data}
+NYPD_data = read.csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?
+                     accessType=DOWNLOAD")
+```
+
+Initial look at the data:
+```{r summary}
+summary(NYPD_data)
+```
+
+For this project we will be looking at the number of shootings on each day of the week, as well as what time these shootings occur. The two variables we need are OCCUR_DATE and OCCUR_TIME.
+
+Cleaning data to obtain the information we need:
+```{r cleaning}
+# creating new data frame with OCCUR_TIME and OCCUR_DATE variables
+NYPD = NYPD_data[,2:3]
+
+# Convert variables to appropriate types
+NYPD$OCCUR_DATE = as.Date(NYPD$OCCUR_DATE, format = "%m/%d/%Y")
+NYPD$OCCUR_TIME = chron(times. = NYPD$OCCUR_TIME, format = "h:m:s")
+```
+
+## Time of Shooting Analysis
+
+The first visual to look at is a histogram of the time of each shooting occurrence.
+```{r time_histogram}
+hist(x = as.numeric(substr(NYPD$OCCUR_TIME,1,2)), breaks = 0:23,  
+     xlab = "Hour in Day", main = "Time of Shooting")
+```
+
+As we can see by the histogram, most shootings occur at night. The shape of the histogram is a parabola, so we will look at fitting a quadratic model to the data.
+```{r quadratic_model}
+# Create time data frame
+TimeData = data.frame(matrix(ncol = 3, nrow = 24))
+colnames(TimeData) = c("Time","TimeSquared","Shootings")
+TimeData$Time = 0:23
+TimeData$TimeSquared = TimeData$Time^2
+for (i in 1:24){
+  TimeData$Shootings[i] = sum(as.numeric(substr(NYPD$OCCUR_TIME,1,2)) == TimeData$Time[i])
+}
+model = lm(Shootings~Time + TimeSquared, data = TimeData)
+summary(model)
+```
+
+The quadratic model for predicting the number of shootings in each hour of the day is $1991.14 - 300.61x + 13.59x^2$ where x is the hour of the day 0 to 23. The Adjusted R-squared value is 0.892 which signifies that this quadratic model is a good fit for the data.
+
+Fitting the quadratic model on the plot.
+```{r plot}
+plot(x = TimeData$Time, y = TimeData$Shootings, ylim = range(0:4000), 
+     main = "Average Number of Shootings Each Hour of the Day", xlab = "Time", 
+     ylab = "Shootings")
+pred = predict(model, x = TimeData$Time)
+lines(x = 0:23, y = pred, type="l")
+```
+
+Looking at the plot, the quadratic model looks like a good fit for the data.
+
+## Weekday Analysis
+
+Now let's look at what day of the week shootings occur by adding a weekday variable.
+```{r weekday}
+# Get weekday of date
+NYPD$Weekday = weekdays(NYPD$OCCUR_DATE)
+```
+
+Making a table for the number of shootings each day of the week.
+```{r table}
+# Create table
+day = data.frame(matrix(nrow=7,ncol=2))
+colnames(day) = c("Day","Shootings")
+
+# Fill in table
+day$Day = c("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday")
+for (i in 1:7){
+  day$Shootings[i] = sum(NYPD$Weekday==day$Day[i])
+}
+```
+
+Creating a bar plot for number of shootings each day of the week.
+```{r bar_plot}
+barplot(height = day$Shootings, names.arg = day$Day, ylim = c(0,5000),
+        main = "Shootings Each Day of the Week", las = 2)
+```
+
+Adding average number of shootings each day variable.
+```{r average}
+for (i in 1:7){
+  day$Count[i] = sum(format(seq(from = min(NYPD$OCCUR_DATE), to = max(NYPD$OCCUR_DATE), 
+                                by = "day"), "%w") == i)
+  
+  # The numerical value in R for Sunday is 0 instead of 7
+  if (i == 7){
+    day$Count[i] = sum(format(seq(from = min(NYPD$OCCUR_DATE), to = max(NYPD$OCCUR_DATE), 
+                                  by = "day"), "%w") == 0)
+  }
+  
+  day$Average[i] = day$Shootings[i]/day$Count[i]
+}
+```
+
+Looking at bar plot for average number of shootings each day.
+```{r average_bar_plot}
+barplot(height = day$Average, names.arg = day$Day, ylim = c(0,7),
+        main = "Shootings Each Day of the Week", las = 2)
+```
+
+After looking at the bar plot, it appears that the number of shootings each day Monday through Sunday is quadratic, so we will fit a quadratic model to the data. Monday through Sunday will be indicated by their day values, Monday being 1 through Sunday being 7.
+
+Creating a quadratic model for predicting the number of shootings on a given weekday.
+```{r quadratic_model_2}
+dayValues = 1:7
+dayValuesSquared = dayValues^2
+model2 = lm(day$Average~(dayValues + dayValuesSquared))
+summary(model2)
+```
+
+The quadratic model for predicting the number of shootings on a given day is $5.156 - 1.234x + 0.204x^2$ where x is the day value. The Adjusted R-squared value is 0.8781 which signifies that this quadratic model is a good fit for the data.
+
+Let's plot the data and prediction and see how it fits.
+```{r prediction_2}
+plot(x = 1:7, y = day$Average, ylim = range(0:7), main = "Average Number of Shootings Each Day",
+     xlab = "Day Value", ylab = "Shootings")
+pred = predict(model2, x = 1:7)
+lines(pred, type="l")
+```
+
+As we can see by the plot, the quadratic model is in fact a good fit for the data.
+
+## Conclusion
+
+In conclusion, most of the shootings in New York City happen during the night hours. The number of shootings that will happen can be pretty well predicted by the quadratic model $1991.14 - 300.61x + 13.59x^2$ where x is the hour in military time 0:23 with an Adjusted R-Squared value of 0.892. If you wanted to predict the number of shootings each hour in a given day, the model would be $0.363 - 0.055x + 0.002x^2$, where again the x is the hour in military time 0:23.
+
+The average number of shootings in New York City each day during the week, Monday through Friday, is between 3 and 4, whereas the average number of shootings on the weekend in New York City is around 6. Looking at a given week Monday through Sunday, the relationship between what day it is and the average number of shootings is quadratic. The quadratic model $5.156 - 1.234x + 0.204x^2$ fits the data well with an Adjusted R-Squared value of 0.8781. 
+
+Possible bias in this data set is that most shootings occur at night before people go to bed, and this leads to the recording of shootings technically being the next day. This bias has been mitigated by looking at both the day shootings occur and what time they occur. These findings can be used to possibly inform the New York police department about which days and times might need more or less police presence around the city.
